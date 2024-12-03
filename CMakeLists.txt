@@ -4,10 +4,10 @@ set(CMAKE_CXX_STANDARD 20)
 
 enable_testing()
 
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Werror -msse4.2")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -msse4.2")
-set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Wall -Werror -msse4.2")
-set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} -Wall -Werror -msse4.2")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -Werror -msse4.2 -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Wall -Werror -msse4.2 -Wno-error=deprecated-declarations")
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -Wall -Wno-error -msse4.2 -Werror=deprecated-declarations")
+set(CMAKE_C_FLAGS_MINSIZEREL "${CMAKE_C_FLAGS_MINSIZEREL} -Wall -Werror -msse4.2 -Wno-error=deprecated-declarations")
 
 message("CMAKE_CXX_FLAGS_DEBUG is ${CMAKE_CXX_FLAGS_DEBUG}")
 message("CMAKE_CXX_FLAGS_RELEASE is ${CMAKE_CXX_FLAGS_RELEASE}")
@@ -35,6 +35,7 @@ add_executable(gcache_test_shared ${SOURCE_FILES} tests/test_shared.cpp)
 add_executable(gcache_test_ghost ${SOURCE_FILES} tests/test_ghost.cpp)
 add_executable(gcache_test_ghost_kv ${SOURCE_FILES} tests/test_ghost_kv.cpp)
 add_executable(gcache_bench_ghost ${SOURCE_FILES} benchmarks/bench_ghost.cpp)
+add_executable(mytest ${SOURCE_FILES} tests/mytest.cpp)
 
 if(SAMPLE_SHIFT)
 	target_compile_definitions(gcache_bench_ghost PRIVATE SAMPLE_SHIFT=${SAMPLE_SHIFT})
