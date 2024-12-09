@@ -26,6 +26,7 @@ set(SOURCE_FILES
 	include/gcache/lru_cache.h
 	include/gcache/stat.h
 	include/gcache/ghost_cache.h
+    include/gcache/arc_cache.h
 	include/gcache/ghost_kv_cache.h
 	include/gcache/shared_cache.h)
 
