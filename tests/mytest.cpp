@@ -6,17 +6,18 @@
 
 #include "gcache/ghost_cache.h"
 #include "gcache/node.h"
+#include "gcache/arc_cache.h"
 #include "util.h"
 
 using namespace gcache;
 
-#define NUM_ACCESS   (1024)
+#define NUM_ACCESS   (8192)
 #define DEFAULT_MIN  (8)
 #define DEFAULT_TICK (4)
 #define DEFAULT_MAX  (256)
 #define PLT_INTV     (128)
 #define BLK_SIZE     (4096)
-#define REQ_MAX      (256)
+#define REQ_MAX      (16384)
 
 GhostCache<> target_cache(DEFAULT_TICK, DEFAULT_MIN, DEFAULT_MAX);
 
@@ -48,11 +49,28 @@ void access(uint32_t blk_id)
 
 int main() {
   std::vector<uint32_t> reqs;
+  std::vector<std::pair<uint32_t, float> > miss_rates;
+  
+  ARC_mrc cache = ARC_mrc(32, 4096, 32, 256);
 
   for (uint32_t i = 0; i < NUM_ACCESS; ++i)
     reqs.emplace_back(rand() % REQ_MAX);
 
-  for (auto i : reqs) access(i);
+  // for(uint32_t i = 0; i < 2048; ++i)
+  // {//build T2
+  //   cache.access(i);
+  //   cache.access(i);
+  // }
+  // cache.reset_stat();
+  for(auto i : reqs)
+  {
+    cache.access(i);
+  }
 
+
+  cache.get_miss_rates(miss_rates);
+
+  for(auto i : miss_rates)
+    std::cout << i.first << ' ' << i.second << std::endl;
   return 0;
 }
