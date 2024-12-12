@@ -27,12 +27,16 @@ enum workload_e {
 class MRC {
     public:
         MRC(enum method_e method, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size);
+        MRC(enum method_e method, enum workload_e workload, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size);
+        MRC(enum method_e method, enum workload_e workload, std::string filename, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size);
+
         enum method_e method() const {return _method;}
         uint32_t sampling_rate() const {return _sampling_rate;}
         uint32_t min_size() const {return _min_size;}
         uint32_t max_size() const {return _max_size;}
-        uint64_t get_time() const {return rdtsc();}
-
+        uint64_t time() const {return rdtsc();}
+        enum workload_e workload() const {return _workload;}
+        std::string tracefile() const {return _tracefile;}
 
         void save_mrc(std::string filename);
         void construct_mrc();
@@ -44,6 +48,8 @@ class MRC {
         void set_sampling_rate(uint32_t sampling_rate) {_sampling_rate = sampling_rate;}
         void set_min_size(uint32_t min_size) {_min_size = min_size;}
         void set_max_size(uint32_t max_size) {_max_size = max_size;}
+        void set_workload(enum workload_e workload) {_workload = workload;};
+        void set_tracefile(std::string tracefile) {_tracefile = tracefile;};
 
         void trace_workload(ARC_cache& cache, std::string filename);
         void random_workload(ARC_cache& cache, std::string filename="\0");
@@ -51,10 +57,14 @@ class MRC {
 
     private:
         enum method_e _method;
+        enum workload_e _workload;
+        std::string _tracefile;
         uint32_t _sampling_rate;
         uint32_t _min_size;
         uint32_t _max_size;
 
         std::map <uint32_t, float> mrc_stats;
         std::map <enum workload_e, void (MRC::*)(ARC_cache&, std::string)> workload_map;
+
+        void map_workloads();
 };

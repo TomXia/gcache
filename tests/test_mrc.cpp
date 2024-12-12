@@ -1,16 +1,45 @@
 #include "tests/test_mrc.h"
 
-MRC::MRC(enum method_e method, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size):
-    _method(method),
-    _sampling_rate(sampling_rate),
-    _min_size(min_size),
-    _max_size(max_size)
-{
+void
+MRC::map_workloads() {
     workload_map[workload_e::TRACE] = &MRC::trace_workload;
     workload_map[workload_e::RANDOM] = &MRC::random_workload;
     workload_map[workload_e::SEQ] = &MRC::seq_workload;
 }
 
+
+MRC::MRC(enum method_e method, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size):
+    _method(method),
+    _workload(workload_e::RANDOM),
+    _tracefile("\0"),
+    _sampling_rate(sampling_rate),
+    _min_size(min_size),
+    _max_size(max_size)
+{
+    map_workloads();
+}
+
+MRC::MRC(enum method_e method, enum workload_e workload, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size):
+    _method(method),
+    _workload(workload),
+    _tracefile("\0"),
+    _sampling_rate(sampling_rate),
+    _min_size(min_size),
+    _max_size(max_size)
+{
+    map_workloads();
+}
+
+MRC::MRC(enum method_e method, enum workload_e workload, std::string filename, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size):
+    _method(method),
+    _workload(workload),
+    _tracefile(filename),
+    _sampling_rate(sampling_rate),
+    _min_size(min_size),
+    _max_size(max_size)
+{
+    map_workloads();
+}
 
 void
 MRC::save_mrc(std::string filename) {
@@ -39,7 +68,7 @@ MRC::construct_baseline_mrc() {
     uint32_t step_size = _min_size;
     for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size += step_size) {
         ARC_cache cache(cache_size);
-        (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+        (this->*workload_map[_workload])(cache, _tracefile);
     }
 }
 
@@ -56,11 +85,11 @@ MRC::construct_slope_mrc() {
         (this->*workload_map[workload_e::RANDOM])(cache, "\0");
     }
 
-    std::tuple<uint32_t, float> prev_size_stats(-1, -1);
+    std::tuple<uint32_t, float> prev_size_stats(0, 0);
     std::tuple<uint32_t, float> curr_size_stats(prev_size_stats);
     for (const auto& pair: mrc_stats) {
         curr_size_stats = std::tuple<uint32_t, float>(pair.first, pair.second);
-        if (std::get<0>(prev_size_stats) != -1) {
+        if (std::get<0>(prev_size_stats) != 0) {
             mrc_slopes[std::get<0>(prev_size_stats)] = (std::get<1>(curr_size_stats) - std::get<1>(prev_size_stats))/(std::get<0>(curr_size_stats) - std::get<0>(prev_size_stats));
         }
         prev_size_stats = curr_size_stats;
