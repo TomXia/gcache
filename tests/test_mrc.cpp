@@ -1,74 +1,134 @@
-#include <cassert>
-#include <cstdint>
-#include <iostream>
-#include <ostream>
-#include <fstream>
-#include <stdexcept>
-#include <bits/stdc++.h>
+#include "tests/test_mrc.h"
 
-#include "gcache/lru_cache.h"
-#include "util.h"
-
-using namespace gcache;
-
-struct hash1 {
-  uint32_t operator()(uint32_t x) const noexcept { return x + 1000; }
-};
-
-struct hash2 {
-  uint32_t operator()(uint32_t x) const noexcept { return x; }
-};
-
-void print_stats(std::ofstream &fout, int cache_size, unsigned long ts0, unsigned long ts1, unsigned long ts2, unsigned long ts3) {
-  fout << cache_size << ",";
-  fout << (ts1 - ts0) << ",";
-  fout << (ts1 - ts0) / (cache_size) << ",";
-  fout << (ts2 - ts1) << ",";
-  fout << (ts2 - ts1) / (cache_size) << ",";
-  fout << (ts3 - ts2) << ",";
-  fout << (ts3 - ts2) / (cache_size) << "\n";
-  fout << std::flush;
+MRC::MRC(enum method_e method, uint32_t sampling_rate, uint32_t min_size, uint32_t max_size):
+    _method(method),
+    _sampling_rate(sampling_rate),
+    _min_size(min_size),
+    _max_size(max_size)
+{
+    workload_map[workload_e::TRACE] = &MRC::trace_workload;
+    workload_map[workload_e::RANDOM] = &MRC::random_workload;
+    workload_map[workload_e::SEQ] = &MRC::seq_workload;
 }
 
-void workload(LRUCache<uint32_t, uint32_t, hash2> &cache, int cache_size, std::ofstream &fout) {
-  // filling the cache
-  auto ts0 = rdtsc();
-  for (int i = 0; i < cache_size; ++i) cache.insert(i);
-  auto ts1 = rdtsc();
 
-  // cache hit
-  for (int i = 0; i < cache_size; ++i) cache.insert(i);
-  auto ts2 = rdtsc();
-
-  // cache miss
-  for (int i = 0; i < cache_size; ++i) cache.insert(i + cache_size);
-  auto ts3 = rdtsc();
-
-  print_stats(fout, cache_size, ts0, ts1, ts2, ts3);
+void
+MRC::save_mrc(std::string filename) {
+    std::ofstream fout(filename, std::ios::trunc | std::ios::out);
+    fout << "Cache size,Miss Rate\n";
+    fout << std::flush;
+    for (const auto& [size, miss_rate]: mrc_stats)
+        fout << size << "," << miss_rate << std::endl;
+    fout << std::flush;
+    fout.close();
+    return;
 }
 
-void mrc_sweep_exp(int start_size, int end_size, int inc) {
-  int cache_size = start_size;
-  std::string outfile = __func__;
-  outfile.append(".csv");
-  std::ofstream fout(outfile, std::ios::trunc | std::ios::out);
-  fout << "Cache Size,Fill Time,Fill Rate (cycles/op),Hit Time, Hit Rate (cycles/op),Miss Time,Miss Rate(cycles/op)\n";
-  fout << std::flush;
-  while (cache_size < end_size) {
-      LRUCache<uint32_t, uint32_t, hash2> cache;
-      cache.init(cache_size);
-      assert(cache.size() == 0);
-      assert(cache.capacity() == cache_size);
-      workload(cache, cache_size, fout);
-      cache_size *= inc;
-  }
-  fout.close();
+void
+MRC::construct_mrc() {
+    mrc_stats.clear();
+    if (method() == method_e::BASELINE) {
+        construct_baseline_mrc();
+    } else {
+        construct_slope_mrc();
+    }
 }
+
+void
+MRC::construct_baseline_mrc() {
+    uint32_t step_size = _min_size;
+    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size += step_size) {
+        ARC_cache cache(cache_size);
+        (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+    }
+}
+
+void
+MRC::construct_slope_mrc() {
+    std::map<uint32_t, float> mrc_slopes;
+
+    float threshold = 0.001;
+    uint32_t num_iters = 100;
+
+    //Warmup the mrc_slopes tree by calculating miss ratios for a few sizes
+    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= 2) {
+        ARC_cache cache(cache_size);
+        (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+    }
+
+    std::tuple<uint32_t, float> prev_size_stats(-1, -1);
+    std::tuple<uint32_t, float> curr_size_stats(prev_size_stats);
+    for (const auto& pair: mrc_stats) {
+        curr_size_stats = std::tuple<uint32_t, float>(pair.first, pair.second);
+        if (std::get<0>(prev_size_stats) != -1) {
+            mrc_slopes[std::get<0>(prev_size_stats)] = (std::get<1>(curr_size_stats) - std::get<1>(prev_size_stats))/(std::get<0>(curr_size_stats) - std::get<0>(prev_size_stats));
+        }
+        prev_size_stats = curr_size_stats;
+    }
+
+    for (const auto& pair: mrc_slopes) {
+       if (pair.second > threshold) {
+           auto upper_bound_stats = mrc_stats.upper_bound(pair.first);
+           auto cache_size = (pair.first + upper_bound_stats->first)/2;
+           ARC_cache cache(cache_size);
+           (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+           mrc_slopes[pair.first] = (mrc_stats[cache_size] - mrc_stats[pair.first])/(cache_size - pair.first);
+           mrc_slopes[upper_bound_stats->first] = (upper_bound_stats->second - mrc_stats[cache_size])/(upper_bound_stats->first - cache_size);
+           num_iters--;
+           if (num_iters == 0) {
+               std::cout << "Max iters reached\n";
+               break;
+           }
+       }
+    }
+
+}
+
+void
+MRC::construct_shards_mrc() {
+    std::cout << "Not implemented\n";
+    std::terminate();
+}
+
+
+void
+MRC::trace_workload(ARC_cache &cache, std::string filename) {}
+
+void
+MRC::seq_workload(ARC_cache &cache, std::string filename) {}
+ 
+ 
+void
+MRC::random_workload(ARC_cache &cache, std::string filename) {
+    std::vector<uint32_t> reqs;
+
+    uint32_t num_accesses = 4 * cache.capacity();
+    uint32_t req_max = 8 * cache.capacity();
+    for (uint32_t i = 0; i < num_accesses; ++i)
+      reqs.emplace_back(rand() % req_max);
+
+    for(auto i : reqs) {
+      cache.access(i);
+    }
+
+    mrc_stats[cache.capacity()] = cache.get_miss_rate();
+}
+
 
 int main() {
-  int start_size = 256 * 1024;
-  int end_size = 256 * 1024 * 1024;
-  int inc = 2;
-  mrc_sweep_exp(start_size, end_size, inc);  // for performance
-  return 0;
+    uint32_t min_size = 32;
+    uint32_t max_size = 4096;
+    method_e method = method_e::BASELINE;
+    uint32_t sampling_rate = 1;
+
+    MRC mrc(method, sampling_rate, min_size, max_size);
+
+    mrc.construct_mrc();
+    mrc.save_mrc("baseline.csv");
+
+    mrc.set_method(method_e::SLOPE);
+    mrc.construct_mrc();
+    mrc.save_mrc("slope.csv");
+
+    return 0;
 }
