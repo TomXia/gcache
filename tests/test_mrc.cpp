@@ -82,7 +82,7 @@ MRC::construct_slope_mrc() {
     //Warmup the mrc_slopes tree by calculating miss ratios for a few sizes
     for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= 2) {
         ARC_cache cache(cache_size);
-        (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+        (this->*workload_map[_workload])(cache, "\0");
     }
 
     std::tuple<uint32_t, float> prev_size_stats(0, 0);
@@ -102,7 +102,7 @@ MRC::construct_slope_mrc() {
            auto upper_bound_stats = mrc_stats.upper_bound(it->first);
            auto cache_size = (it->first + upper_bound_stats->first)/2;
            ARC_cache cache(cache_size);
-           (this->*workload_map[workload_e::RANDOM])(cache, "\0");
+           (this->*workload_map[_workload])(cache, "\0");
            mrc_slopes[it->first] = abs(mrc_stats[cache_size] - mrc_stats[it->first])/(cache_size - it->first);
            mrc_slopes[upper_bound_stats->first] = (upper_bound_stats->second - mrc_stats[cache_size])/(upper_bound_stats->first - cache_size);
            num_iters--;
@@ -127,13 +127,26 @@ void
 MRC::trace_workload(ARC_cache &cache, std::string filename) {}
 
 void
-MRC::seq_workload(ARC_cache &cache, std::string filename) {}
+MRC::seq_workload(ARC_cache &cache, std::string filename) {
+    std::vector<uint32_t> reqs;
+    uint32_t num_accesses = max_size()/2;
+    for (uint32_t i = 0; i < num_accesses; ++i)
+      reqs.emplace_back(i);
+
+    auto iters = 4;
+    for (int j = 0; j < iters; ++j) {
+        for(auto i : reqs) {
+          cache.access(i);
+        }
+    }
+
+    mrc_stats[cache.capacity()] = cache.get_miss_rate();
+}
  
  
 void
 MRC::random_workload(ARC_cache &cache, std::string filename) {
     std::vector<uint32_t> reqs;
-
     uint32_t num_accesses = 4 * cache.capacity();
     uint32_t req_max = 8 * cache.capacity();
     for (uint32_t i = 0; i < num_accesses; ++i)
@@ -151,13 +164,13 @@ int main() {
     uint32_t min_size = 32;
     uint32_t max_size = 4096;
     method_e method = method_e::BASELINE;
+    workload_e workload = workload_e::SEQ;
     uint32_t sampling_rate = 1;
 
-    MRC mrc(method, sampling_rate, min_size, max_size);
+    MRC mrc(method, workload, sampling_rate, min_size, max_size);
 
     mrc.construct_mrc();
     mrc.save_mrc("baseline.csv");
-
     mrc.set_method(method_e::SLOPE);
     mrc.construct_mrc();
     mrc.save_mrc("slope.csv");
