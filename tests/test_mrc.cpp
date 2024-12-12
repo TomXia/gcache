@@ -76,8 +76,8 @@ void
 MRC::construct_slope_mrc() {
     std::map<uint32_t, float> mrc_slopes;
 
-    float threshold = 0.001;
-    uint32_t num_iters = 100;
+    uint32_t max_iters = 1000;
+    uint32_t num_iters = max_iters;
 
     //Warmup the mrc_slopes tree by calculating miss ratios for a few sizes
     for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= 2) {
@@ -87,30 +87,33 @@ MRC::construct_slope_mrc() {
 
     std::tuple<uint32_t, float> prev_size_stats(0, 0);
     std::tuple<uint32_t, float> curr_size_stats(prev_size_stats);
-    for (const auto& pair: mrc_stats) {
-        curr_size_stats = std::tuple<uint32_t, float>(pair.first, pair.second);
+    for (const auto& it: mrc_stats) {
+        curr_size_stats = std::tuple<uint32_t, float>(it.first, it.second);
         if (std::get<0>(prev_size_stats) != 0) {
-            mrc_slopes[std::get<0>(prev_size_stats)] = (std::get<1>(curr_size_stats) - std::get<1>(prev_size_stats))/(std::get<0>(curr_size_stats) - std::get<0>(prev_size_stats));
+            mrc_slopes[std::get<0>(prev_size_stats)] = abs(std::get<1>(curr_size_stats) - std::get<1>(prev_size_stats))/(std::get<0>(curr_size_stats) - std::get<0>(prev_size_stats));
         }
         prev_size_stats = curr_size_stats;
     }
 
-    for (const auto& pair: mrc_slopes) {
-       if (pair.second > threshold) {
-           auto upper_bound_stats = mrc_stats.upper_bound(pair.first);
-           auto cache_size = (pair.first + upper_bound_stats->first)/2;
+    float threshold = 0.001;
+    auto it = mrc_slopes.begin();
+    while (it != mrc_slopes.end()) {
+       if (it->second > threshold) {
+           auto upper_bound_stats = mrc_stats.upper_bound(it->first);
+           auto cache_size = (it->first + upper_bound_stats->first)/2;
            ARC_cache cache(cache_size);
            (this->*workload_map[workload_e::RANDOM])(cache, "\0");
-           mrc_slopes[pair.first] = (mrc_stats[cache_size] - mrc_stats[pair.first])/(cache_size - pair.first);
+           mrc_slopes[it->first] = abs(mrc_stats[cache_size] - mrc_stats[it->first])/(cache_size - it->first);
            mrc_slopes[upper_bound_stats->first] = (upper_bound_stats->second - mrc_stats[cache_size])/(upper_bound_stats->first - cache_size);
            num_iters--;
            if (num_iters == 0) {
                std::cout << "Max iters reached\n";
                break;
            }
+       } else {
+           it++;
        }
     }
-
 }
 
 void
