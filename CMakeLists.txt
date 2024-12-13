@@ -26,7 +26,7 @@ set(SOURCE_FILES
 	include/gcache/lru_cache.h
 	include/gcache/stat.h
 	include/gcache/ghost_cache.h
-    include/gcache/arc_cache.h
+	include/gcache/arc_cache.h
 	include/gcache/ghost_kv_cache.h
 	include/gcache/shared_cache.h)
 
@@ -39,6 +39,7 @@ add_executable(gcache_test_ghost_kv ${SOURCE_FILES} tests/test_ghost_kv.cpp)
 add_executable(gcache_bench_ghost ${SOURCE_FILES} benchmarks/bench_ghost.cpp)
 add_executable(mytest ${SOURCE_FILES} tests/mytest.cpp)
 add_executable(gcache_test_mrc ${SOURCE_FILES} tests/test_mrc.h tests/test_mrc.cpp)
+add_executable(thesios_test ${SOURCE_FILES} tests/test_thesios_trace.cpp)
 
 if(SAMPLE_SHIFT)
 	target_compile_definitions(gcache_bench_ghost PRIVATE SAMPLE_SHIFT=${SAMPLE_SHIFT})
