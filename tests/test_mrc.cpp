@@ -124,7 +124,14 @@ MRC::construct_shards_mrc() {
 
 
 void
-MRC::trace_workload(ARC_cache &cache, std::string filename) {}
+MRC::trace_workload(ARC_cache &cache, std::string filename) {
+    if (trace_requests.empty()) {
+        parse_tracefile(filename, "bigtable");
+    }
+    play_tracefile(cache);
+
+    mrc_stats[cache.capacity()] = cache.get_miss_rate();
+}
 
 void
 MRC::seq_workload(ARC_cache &cache, std::string filename) {
@@ -159,6 +166,102 @@ MRC::random_workload(ARC_cache &cache, std::string filename) {
     mrc_stats[cache.capacity()] = cache.get_miss_rate();
 }
 
+void
+MRC::parse_tracefile(std::string filename, std::string app) {
+    std::cout << "Parsing Tracefile\n";
+	std::ifstream file(filename);
+	std::string line;
+	int count = 0;
+	bool skip_header = false;
+	int rs_col = -1, offset_col = -1, fname_col = -1, app_col = -1;
+
+	while (std::getline(file, line)) {
+		std::stringstream ss(line);
+		std::string cell;
+		if (!skip_header) {
+			skip_header = true;
+			while (std::getline(ss, cell, ',')) {
+				if (cell == "filename") {
+				    fname_col = count;
+				} else if (cell == "file_offset") {
+				    offset_col = count;
+				} else if (cell == "request_io_size_bytes") {
+				    rs_col = count;
+				} else if (cell == "application") {
+				    app_col = count; 
+				}
+				count++;
+			}
+		}
+		if ((rs_col < 0) || (offset_col < 0) || (fname_col < 0) || (app_col < -1)) {
+			std::cout << "request io, offset or filename column not found in data!" << std::endl;
+			std::cout << "request io size bytes column (" << rs_col << ", index)" << std::endl;
+			std::cout << "offset size column (" << offset_col << ", index)" << std::endl;
+			std::cout << "filename column (" << fname_col << ", index)" << std::endl;
+			return ;
+
+		}
+		count = 0;
+		uint32_t file_offset = 0;
+		uint32_t rs = 0;
+		uint32_t total_size = 0;
+		std::string filename;
+		bool skip_row = false; 
+		while (std::getline(ss, cell, ',')) {
+			if (count == app_col) {
+				if (cell != app && (!app.empty())) {
+					skip_row = true;
+					break;
+				} 
+			} else if (count == fname_col) {
+				filename = cell;
+			} else if (count == rs_col) {
+				rs = (uint32_t) std::atoi(cell.c_str());
+			} else if(count == offset_col) {
+				file_offset = (uint32_t) std::atoi(cell.c_str());
+			}
+			count++;
+		}
+
+		if (skip_row) {
+			continue; 
+		} else {
+			if (!trace_requests.count(filename)) {
+				trace_requests.insert(std::make_pair(filename,
+					       std::make_tuple(
+						       0xffffffff,
+						       0)));
+			}
+			total_size = rs + file_offset;
+			if (file_offset < std::get<0>(trace_requests[filename])) {
+				std::get<0>(trace_requests[filename]) = file_offset;
+			}
+			if (total_size > std::get<1>(trace_requests[filename])) {
+				std::get<1>(trace_requests[filename]) = total_size;
+				std::cout << "new max rq size is " << total_size << std::endl;
+			}
+		}
+	}
+}
+
+uint32_t
+MRC::play_tracefile(ARC_cache &cache) {
+	uint32_t prev_boundary = 0; 
+	for (auto it = trace_requests.cbegin(); it != trace_requests.cend(); ++it) {
+		if (it->first.empty())
+			continue;
+		uint32_t curr_min_offset = std::get<0>(it->second);
+		uint32_t curr_max_size = std::get<1>(it->second);
+		uint32_t boundary = ((curr_max_size - curr_min_offset) / block_size) + prev_boundary;
+		for (uint32_t i = prev_boundary; i < boundary; i++){
+			cache.access(i); 
+			//std::cout << '\t' << i << std::endl;
+		}
+		prev_boundary = boundary; 
+	}
+	return prev_boundary; 
+}
+
 
 int main() {
     uint32_t min_size = 32;
@@ -171,9 +274,16 @@ int main() {
 
     mrc.construct_mrc();
     mrc.save_mrc("baseline.csv");
+
     mrc.set_method(method_e::SLOPE);
     mrc.construct_mrc();
     mrc.save_mrc("slope.csv");
+
+    mrc.set_method(method_e::BASELINE);
+    mrc.set_workload(workload_e::TRACE);
+    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
+    mrc.construct_mrc();
+    mrc.save_mrc("trace.csv");
 
     return 0;
 }
