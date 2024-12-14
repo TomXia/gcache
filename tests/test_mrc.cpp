@@ -65,8 +65,9 @@ MRC::construct_mrc() {
 
 void
 MRC::construct_baseline_mrc() {
-    uint32_t step_size = _min_size;
-    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size += step_size) {
+    uint32_t step_size = 2;
+    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= step_size) {
+        std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
         ARC_cache cache(cache_size);
         (this->*workload_map[_workload])(cache, _tracefile);
     }
@@ -131,6 +132,7 @@ MRC::trace_workload(ARC_cache &cache, std::string filename) {
     play_tracefile(cache);
 
     mrc_stats[cache.capacity()] = cache.get_miss_rate();
+    std::cout << "Miss Rate: " << cache.get_miss_rate() << "\n";
 }
 
 void
@@ -172,6 +174,7 @@ MRC::parse_tracefile(std::string filename, std::string app) {
 	std::ifstream file(filename);
 	std::string line;
 	int count = 0;
+    uint32_t unique_file_num = 0;
 	bool skip_header = false;
 	int rs_col = -1, offset_col = -1, fname_col = -1, app_col = -1;
 
@@ -226,62 +229,53 @@ MRC::parse_tracefile(std::string filename, std::string app) {
 		if (skip_row) {
 			continue; 
 		} else {
-			if (!trace_requests.count(filename)) {
-				trace_requests.insert(std::make_pair(filename,
-					       std::make_tuple(
-						       0xffffffff,
-						       0)));
-			}
-			total_size = rs + file_offset;
-			if (file_offset < std::get<0>(trace_requests[filename])) {
-				std::get<0>(trace_requests[filename]) = file_offset;
-			}
-			if (total_size > std::get<1>(trace_requests[filename])) {
-				std::get<1>(trace_requests[filename]) = total_size;
-				std::cout << "new max rq size is " << total_size << std::endl;
-			}
+    			total_size = rs + file_offset;
+                trace_requests.push_back(std::make_tuple(filename, file_offset, total_size));
+            }
+            if (!file_map.contains(filename)) {
+                file_map[filename] = unique_file_num;
+                unique_file_num++;
+            }
+            if (total_size > max_file_size) {
+                max_file_size = ((total_size/block_size) + 1)*block_size;
 		}
 	}
 }
 
-uint32_t
+void
 MRC::play_tracefile(ARC_cache &cache) {
-	uint32_t prev_boundary = 0; 
 	for (auto it = trace_requests.cbegin(); it != trace_requests.cend(); ++it) {
-		if (it->first.empty())
-			continue;
-		uint32_t curr_min_offset = std::get<0>(it->second);
-		uint32_t curr_max_size = std::get<1>(it->second);
-		uint32_t boundary = ((curr_max_size - curr_min_offset) / block_size) + prev_boundary;
-		for (uint32_t i = prev_boundary; i < boundary; i++){
-			cache.access(i); 
+        std::string filename = std::get<0>(*it);
+        uint32_t file_base_addr = file_map[filename] * max_file_size;
+		uint32_t first_block_id = (std::get<1>(*it)+file_base_addr)/block_size;
+		uint32_t last_block_id = (std::get<2>(*it)+file_base_addr)/block_size;
+		for (uint32_t i = first_block_id; i <= last_block_id; i++){
+			cache.access(i); // % cache.capacity()); 
 			//std::cout << '\t' << i << std::endl;
 		}
-		prev_boundary = boundary; 
 	}
-	return prev_boundary; 
 }
 
 
 int main() {
-    uint32_t min_size = 32;
-    uint32_t max_size = 4096;
+    uint32_t min_size = 32*1024;
+    uint32_t max_size = 4096*256*1024;
     method_e method = method_e::BASELINE;
-    workload_e workload = workload_e::SEQ;
+    workload_e workload = workload_e::TRACE;
     uint32_t sampling_rate = 1;
 
     MRC mrc(method, workload, sampling_rate, min_size, max_size);
 
-    mrc.construct_mrc();
-    mrc.save_mrc("baseline.csv");
+//    mrc.construct_mrc();
+//    mrc.save_mrc("baseline.csv");
+//
+//    mrc.set_method(method_e::SLOPE);
+//    mrc.construct_mrc();
+//    mrc.save_mrc("slope.csv");
 
-    mrc.set_method(method_e::SLOPE);
-    mrc.construct_mrc();
-    mrc.save_mrc("slope.csv");
-
-    mrc.set_method(method_e::BASELINE);
-    mrc.set_workload(workload_e::TRACE);
-    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
+//    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
+    mrc.set_tracefile("../thesios_traces/data-00000-of-00100");
+//    mrc.set_tracefile("../../data-00100");
     mrc.construct_mrc();
     mrc.save_mrc("trace.csv");
 

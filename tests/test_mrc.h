@@ -34,7 +34,7 @@ class MRC {
         uint32_t sampling_rate() const {return _sampling_rate;}
         uint32_t min_size() const {return _min_size;}
         uint32_t max_size() const {return _max_size;}
-        uint64_t time() const {return rdtsc();}
+        uint32_t time() const {return rdtsc();}
         enum workload_e workload() const {return _workload;}
         std::string tracefile() const {return _tracefile;}
 
@@ -64,14 +64,17 @@ class MRC {
         uint32_t _max_size;
 
         const uint32_t block_size = 4096;
+        uint32_t max_file_size = 0;
 
         std::map <uint32_t, float> mrc_stats;
         std::map <enum workload_e, void (MRC::*)(ARC_cache&, std::string)> workload_map;
-        typedef std::tuple<uint32_t, uint32_t> trace_tuple;
-        std::map <std::string, trace_tuple> trace_requests; 
+        typedef std::tuple<std::string, uint32_t, uint32_t> trace_tuple;
+        std::vector <trace_tuple> trace_requests; 
+        std::map <std::string, uint32_t> file_map;
 
 
+        void update_stats(ARC_cache& cache, uint32_t capacity);
         void map_workloads();
         void parse_tracefile(std::string filename, std::string app= "");
-        uint32_t play_tracefile(ARC_cache &cache);
+        void play_tracefile(ARC_cache &cache);
 };
