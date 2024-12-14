@@ -72,9 +72,12 @@ class MRC {
         std::vector <trace_tuple> trace_requests; 
         std::map <std::string, uint32_t> file_map;
 
+        std::vector<uint32_t> trace_requests_blkid;
+
 
         void update_stats(ARC_cache& cache, uint32_t capacity);
         void map_workloads();
         void parse_tracefile(std::string filename, std::string app= "");
         void play_tracefile(ARC_cache &cache);
+        void create_trace_requests();
 };

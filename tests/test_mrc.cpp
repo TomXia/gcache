@@ -243,6 +243,7 @@ MRC::parse_tracefile(std::string filename, std::string app) {
                 max_file_size = ((total_size/block_size) + 1)*block_size;
 		}
 	}
+    create_trace_requests();
 }
 
 void
@@ -257,6 +258,20 @@ MRC::play_tracefile(ARC_cache &cache) {
 			//std::cout << '\t' << i << std::endl;
 		}
 	}
+}
+
+void 
+MRC::create_trace_requests(){
+    for (auto it = trace_requests.cbegin(); it != trace_requests.cend(); ++it) {
+        std::string filename = std::get<0>(*it);
+        uint32_t file_base_addr = file_map[filename] * max_file_size;
+		uint32_t first_block_id = (std::get<1>(*it)+file_base_addr)/block_size;
+		uint32_t last_block_id = (std::get<2>(*it)+file_base_addr)/block_size;
+		for (uint32_t i = first_block_id; i <= last_block_id; i++){
+			this->trace_requests_blkid.push_back(i);
+		}
+	}
+    std::cerr << "Total requests: " << this->trace_requests_blkid.size() << std::endl;
 }
 
 
