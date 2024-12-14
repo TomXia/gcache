@@ -56,6 +56,7 @@ MRC::save_mrc(std::string filename) {
 void
 MRC::construct_mrc() {
     mrc_stats.clear();
+    trace_requests.clear();
     if (method() == method_e::BASELINE) {
         construct_baseline_mrc();
     } else {
@@ -65,8 +66,8 @@ MRC::construct_mrc() {
 
 void
 MRC::construct_baseline_mrc() {
-    uint32_t step_size = 2;
-    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= step_size) {
+    uint32_t step_size = (_max_size - _min_size)/501;
+    for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size += step_size) {
         std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
         ARC_cache cache(cache_size);
         (this->*workload_map[_workload])(cache, _tracefile);
@@ -82,8 +83,9 @@ MRC::construct_slope_mrc() {
 
     //Warmup the mrc_slopes tree by calculating miss ratios for a few sizes
     for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size *= 2) {
+        std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
         ARC_cache cache(cache_size);
-        (this->*workload_map[_workload])(cache, "\0");
+        (this->*workload_map[_workload])(cache, _tracefile);
     }
 
     std::tuple<uint32_t, float> prev_size_stats(0, 0);
@@ -96,14 +98,15 @@ MRC::construct_slope_mrc() {
         prev_size_stats = curr_size_stats;
     }
 
-    float threshold = 0.001;
+    float threshold = 0.01;
     auto it = mrc_slopes.begin();
     while (it != mrc_slopes.end()) {
-       if (it->second > threshold) {
-           auto upper_bound_stats = mrc_stats.upper_bound(it->first);
+       auto upper_bound_stats = mrc_stats.upper_bound(it->first);
+       if ((it->second * (upper_bound_stats->first - it->first)) > threshold) {
            auto cache_size = (it->first + upper_bound_stats->first)/2;
+           std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
            ARC_cache cache(cache_size);
-           (this->*workload_map[_workload])(cache, "\0");
+           (this->*workload_map[_workload])(cache, _tracefile);
            mrc_slopes[it->first] = abs(mrc_stats[cache_size] - mrc_stats[it->first])/(cache_size - it->first);
            mrc_slopes[upper_bound_stats->first] = (upper_bound_stats->second - mrc_stats[cache_size])/(upper_bound_stats->first - cache_size);
            num_iters--;
@@ -127,7 +130,7 @@ MRC::construct_shards_mrc() {
 void
 MRC::trace_workload(ARC_cache &cache, std::string filename) {
     if (trace_requests.empty()) {
-        parse_tracefile(filename, "bigtable");
+        parse_tracefile(filename, "b5b4908459d349a16a0416b1c5d6e79e5b3324491c9e08999a6f2630e1abfebb");
     }
     play_tracefile(cache);
 
@@ -260,7 +263,7 @@ MRC::play_tracefile(ARC_cache &cache) {
 int main() {
     uint32_t min_size = 32*1024;
     uint32_t max_size = 4096*256*1024;
-    method_e method = method_e::BASELINE;
+    method_e method = method_e::SLOPE;
     workload_e workload = workload_e::TRACE;
     uint32_t sampling_rate = 1;
 
@@ -277,7 +280,12 @@ int main() {
     mrc.set_tracefile("../thesios_traces/data-00000-of-00100");
 //    mrc.set_tracefile("../../data-00100");
     mrc.construct_mrc();
-    mrc.save_mrc("trace.csv");
+    mrc.save_mrc("trace-slope.csv");
+
+    std::cout << "Running Baseline\n";
+    mrc.set_method(method_e::BASELINE);
+    mrc.construct_mrc();
+    mrc.save_mrc("trace-baseline.csv");
 
     return 0;
 }
