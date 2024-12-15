@@ -1,4 +1,5 @@
 #include "tests/test_mrc.h"
+#include <chrono>
 
 void
 MRC::map_workloads() {
@@ -47,6 +48,7 @@ MRC::MRC(enum method_e method, enum workload_e workload, std::string filename, u
 void
 MRC::save_mrc(std::string filename) {
     std::ofstream fout(filename, std::ios::trunc | std::ios::out);
+    fout << "Runtime:"<<(unsigned long)(runtime)<<"\n";
     fout << "Cache size,Miss Rate\n";
     fout << std::flush;
     for (const auto& [size, miss_rate]: mrc_stats)
@@ -60,16 +62,19 @@ void
 MRC::construct_mrc() {
     mrc_stats.clear();
     trace_requests.clear();
+    synthetic_requests.clear();
+    auto start = std::chrono::high_resolution_clock::now();
     if (method() == method_e::BASELINE) {
         construct_baseline_mrc();
     } else {
         construct_slope_mrc();
     }
+    runtime = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start).count();
 }
 
 void
 MRC::construct_baseline_mrc() {
-    uint32_t step_size = (_max_size - _min_size)/501;
+    uint32_t step_size = _min_size;
     for (uint32_t cache_size = _min_size; cache_size <= _max_size; cache_size += step_size) {
         std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
         ARC_cache cache(cache_size);
@@ -103,10 +108,15 @@ MRC::construct_slope_mrc() {
 
     float threshold = 0.01;
     auto it = mrc_slopes.begin();
+    uint32_t prev_cache_size = 0;
     while (it != mrc_slopes.end()) {
        auto upper_bound_stats = mrc_stats.upper_bound(it->first);
        if ((it->second * (upper_bound_stats->first - it->first)) > threshold) {
            auto cache_size = (it->first + upper_bound_stats->first)/2;
+           if (prev_cache_size == cache_size) {
+               it++;
+               continue;
+           }
            std::cout << "Size: " << cache_size << "/" << _max_size << std::endl;
            ARC_cache cache(cache_size);
            (this->*workload_map[_workload])(cache, _tracefile);
@@ -117,6 +127,7 @@ MRC::construct_slope_mrc() {
                std::cout << "Max iters reached\n";
                break;
            }
+           prev_cache_size = cache_size;
        } else {
            it++;
        }
@@ -143,14 +154,15 @@ MRC::trace_workload(ARC_cache &cache, std::string filename) {
 
 void
 MRC::seq_workload(ARC_cache &cache, std::string filename) {
-    std::vector<uint32_t> reqs;
-    uint32_t num_accesses = max_size()/2;
-    for (uint32_t i = 0; i < num_accesses; ++i)
-      reqs.emplace_back(i);
+    if (synthetic_requests.empty()) {
+        uint32_t num_accesses = max_size()/2;
+        for (uint32_t i = 0; i < num_accesses; ++i)
+            synthetic_requests.emplace_back(i);
+    }
 
     auto iters = 4;
     for (int j = 0; j < iters; ++j) {
-        for(auto i : reqs) {
+        for(auto i : synthetic_requests) {
           cache.access(i);
         }
     }
@@ -161,13 +173,14 @@ MRC::seq_workload(ARC_cache &cache, std::string filename) {
  
 void
 MRC::random_workload(ARC_cache &cache, std::string filename) {
-    std::vector<uint32_t> reqs;
-    uint32_t num_accesses = 4 * cache.capacity();
-    uint32_t req_max = 8 * cache.capacity();
-    for (uint32_t i = 0; i < num_accesses; ++i)
-      reqs.emplace_back(rand() % req_max);
+    if (synthetic_requests.empty()) {
+        uint32_t num_accesses = max_size();
+        uint32_t req_max = num_accesses;
+        for (uint32_t i = 0; i < num_accesses; ++i)
+            synthetic_requests.emplace_back(rand() % req_max);
+    }
 
-    for(auto i : reqs) {
+    for(auto i : synthetic_requests) {
       cache.access(i);
     }
 
@@ -288,24 +301,24 @@ MRC::create_trace_requests(){
 
 
 int main() {
-    uint32_t min_size = 32*1024;
-    uint32_t max_size = 4096*256*1024;
-    method_e method = method_e::SLOPE;
-    workload_e workload = workload_e::TRACE;
+    uint32_t min_size = 8196;
+    uint32_t max_size = 1024*1024*1024/4;
+    method_e method = method_e::BASELINE;
+    workload_e workload = workload_e::RANDOM;
     uint32_t sampling_rate = 1;
 
     MRC mrc(method, workload, sampling_rate, min_size, max_size);
 
-//    mrc.construct_mrc();
-//    mrc.save_mrc("baseline.csv");
-//
-//    mrc.set_method(method_e::SLOPE);
-//    mrc.construct_mrc();
-//    mrc.save_mrc("slope.csv");
+    mrc.construct_mrc();
+    mrc.save_mrc("random-baseline.csv");
+
+    mrc.set_method(method_e::SLOPE);
+    mrc.construct_mrc();
+    mrc.save_mrc("random-slope.csv");
     mrc.set_num_trace_played(0);
-//    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
+    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
     mrc.set_tracefile("../thesios_traces/data-00000-of-00100");
-//    mrc.set_tracefile("../../data-00100");
+    mrc.set_tracefile("../../data-00100");
     mrc.construct_mrc();
     mrc.save_mrc("trace-slope.csv");
 

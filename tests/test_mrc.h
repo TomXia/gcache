@@ -75,6 +75,9 @@ class MRC {
         std::map <std::string, uint32_t> file_map;
 
         std::vector<uint32_t> trace_requests_blkid;
+        std::vector<uint32_t> synthetic_requests;
+
+        double runtime = 0;
 
 
         void update_stats(ARC_cache& cache, uint32_t capacity);
