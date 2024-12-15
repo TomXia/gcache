@@ -14,7 +14,8 @@ MRC::MRC(enum method_e method, uint32_t sampling_rate, uint32_t min_size, uint32
     _tracefile("\0"),
     _sampling_rate(sampling_rate),
     _min_size(min_size),
-    _max_size(max_size)
+    _max_size(max_size),
+    num_trace_played(0)
 {
     map_workloads();
 }
@@ -25,7 +26,8 @@ MRC::MRC(enum method_e method, enum workload_e workload, uint32_t sampling_rate,
     _tracefile("\0"),
     _sampling_rate(sampling_rate),
     _min_size(min_size),
-    _max_size(max_size)
+    _max_size(max_size),
+    num_trace_played(0)
 {
     map_workloads();
 }
@@ -36,7 +38,8 @@ MRC::MRC(enum method_e method, enum workload_e workload, std::string filename, u
     _tracefile(filename),
     _sampling_rate(sampling_rate),
     _min_size(min_size),
-    _max_size(max_size)
+    _max_size(max_size),
+    num_trace_played(0)
 {
     map_workloads();
 }
@@ -132,7 +135,7 @@ MRC::trace_workload(ARC_cache &cache, std::string filename) {
     if (trace_requests.empty()) {
         parse_tracefile(filename, "b5b4908459d349a16a0416b1c5d6e79e5b3324491c9e08999a6f2630e1abfebb");
     }
-    play_tracefile(cache);
+    play_tracefile(cache, num_trace_played);
 
     mrc_stats[cache.capacity()] = cache.get_miss_rate();
     std::cout << "Miss Rate: " << cache.get_miss_rate() << "\n";
@@ -244,10 +247,14 @@ MRC::parse_tracefile(std::string filename, std::string app) {
 		}
 	}
     create_trace_requests();
+    std::ofstream ofs("requests.txt");
+    for(auto i : trace_requests_blkid)
+        ofs << i << '\n';
 }
 
 void
-MRC::play_tracefile(ARC_cache &cache) {
+MRC::play_tracefile(ARC_cache &cache, uint32_t num_access) {
+    uint32_t cur_acc_counter = 0;
 	for (auto it = trace_requests.cbegin(); it != trace_requests.cend(); ++it) {
         std::string filename = std::get<0>(*it);
         uint32_t file_base_addr = file_map[filename] * max_file_size;
@@ -256,7 +263,12 @@ MRC::play_tracefile(ARC_cache &cache) {
 		for (uint32_t i = first_block_id; i <= last_block_id; i++){
 			cache.access(i); // % cache.capacity()); 
 			//std::cout << '\t' << i << std::endl;
+            cur_acc_counter++;
+            if(num_access != 0 && cur_acc_counter >= num_access)
+                break;
 		}
+        if(num_access != 0 && cur_acc_counter >= num_access)
+            break;
 	}
 }
 
@@ -290,7 +302,7 @@ int main() {
 //    mrc.set_method(method_e::SLOPE);
 //    mrc.construct_mrc();
 //    mrc.save_mrc("slope.csv");
-
+    mrc.set_num_trace_played(0);
 //    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
     mrc.set_tracefile("../thesios_traces/data-00000-of-00100");
 //    mrc.set_tracefile("../../data-00100");
