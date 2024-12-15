@@ -302,7 +302,7 @@ MRC::create_trace_requests(){
 
 int main() {
     uint32_t min_size = 8196;
-    uint32_t max_size = 1024*1024*1024/4;
+    uint32_t max_size = 1024*1024*1024/4096;
     method_e method = method_e::BASELINE;
     workload_e workload = workload_e::RANDOM;
     uint32_t sampling_rate = 1;
@@ -315,10 +315,10 @@ int main() {
     mrc.set_method(method_e::SLOPE);
     mrc.construct_mrc();
     mrc.save_mrc("random-slope.csv");
-    mrc.set_num_trace_played(0);
-    mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
+//    mrc.set_num_trace_played(0);
+ //   mrc.set_tracefile("../thesios_traces/thesios-subset.csv");
     mrc.set_tracefile("../thesios_traces/data-00000-of-00100");
-    mrc.set_tracefile("../../data-00100");
+  //  mrc.set_tracefile("../../data-00100");
     mrc.construct_mrc();
     mrc.save_mrc("trace-slope.csv");
 
