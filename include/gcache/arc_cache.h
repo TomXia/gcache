@@ -152,18 +152,24 @@ private:
         if (!T1.empty() && (T1.size() > p || (in_b2 && T1.size() == p)))
         {
             // Evict from T1 to B1
-            uint32_t key = T1.back();
-            T1.pop_back();
-            B1.push_front(key);
-            in_ghost[key] = true; // Track in ghost list
-            stat_ev++;
+            if(T1.size() > 0)
+            {
+                uint32_t key = T1.back();
+                T1.pop_back();
+                B1.push_front(key);
+                in_ghost[key] = true; // Track in ghost list
+                stat_ev++;
+            }
         } else {
             // Evict from T2 to B2
-            uint32_t key = T2.back();
-            T2.pop_back();
-            B2.push_front(key);
-            in_ghost[key] = true; // Track in ghost list
-            stat_ev++;
+            if(T2.size() > 0)
+            {
+                uint32_t key = T2.back();
+                T2.pop_back();
+                B2.push_front(key);
+                in_ghost[key] = true; // Track in ghost list
+                stat_ev++;
+            }
         }
     }
 };
